@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"rune/internal/search"
 	"rune/internal/standup"
 	"rune/internal/store"
 	"rune/internal/tui"
@@ -25,8 +26,10 @@ func main() {
 	switch os.Args[1] {
 	case "standup":
 		runStandup(os.Args[2:])
+	case "search":
+		runSearch(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: rune [standup]\n")
+		fmt.Fprintf(os.Stderr, "Usage: rune [standup|search]\n")
 		os.Exit(1)
 	}
 }
@@ -70,6 +73,63 @@ func runStandup(args []string) {
 
 	out := standup.FormatStandup(entries, since)
 	fmt.Println(out)
+}
+
+func runSearch(args []string) {
+	project := ""
+
+	// Parse -p flag
+	remaining := args[:0]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-p":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "Error: -p requires a project name")
+				os.Exit(1)
+			}
+			i++
+			project = args[i]
+		default:
+			remaining = append(remaining, args[i])
+		}
+	}
+	args = remaining
+
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: search query is required")
+		os.Exit(1)
+	}
+	query := strings.Join(args, " ")
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	s := store.NewStore(filepath.Join(home, ".rune"))
+	entries, err := s.ReadRange(time.Date(2000, 1, 1, 0, 0, 0, 0, time.Local), time.Now())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	entries = search.FilterByProject(entries, project)
+	matches := search.Search(entries, query)
+
+	for _, m := range matches {
+		t := m.Entry.Timestamp
+		projectStr := m.Entry.Project
+		if projectStr == "" {
+			projectStr = "general"
+		}
+		fmt.Printf("%s %s [%s] %s\n",
+			t.Format("2006-01-02"),
+			t.Format("15:04"),
+			projectStr,
+			m.Entry.Body,
+		)
+	}
 }
 
 func parseSince(raw string) (time.Time, error) {

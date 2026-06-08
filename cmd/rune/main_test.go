@@ -17,8 +17,8 @@ func TestCLI_UnknownFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exit error for unknown flag")
 	}
-	if string(out) != "Usage: rune [standup]\n" {
-		t.Errorf("got %q, want %q", string(out), "Usage: rune [standup]\n")
+	if string(out) != "Usage: rune [standup|search]\n" {
+		t.Errorf("got %q, want %q", string(out), "Usage: rune [standup|search]\n")
 	}
 }
 
@@ -85,6 +85,94 @@ func TestCLI_Standup_SinceFlag_ExcludesOldEntries(t *testing.T) {
 	}
 	if strings.TrimSpace(string(out)) != "" {
 		t.Errorf("expected empty output when --since is in the future, got:\n%s", string(out))
+	}
+}
+
+func TestCLI_Search_NoQuery(t *testing.T) {
+	binary := buildBinary(t)
+
+	cmd := exec.Command(binary, "search")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected exit error when no query given")
+	}
+	if string(out) != "Error: search query is required\n" {
+		t.Errorf("got %q, want %q", string(out), "Error: search query is required\n")
+	}
+}
+
+func TestCLI_Search_Matches(t *testing.T) {
+	binary, runeDir := buildBinaryWithDir(t)
+
+	entriesDir := filepath.Join(runeDir, ".rune", "entries")
+	os.MkdirAll(entriesDir, 0755)
+	os.WriteFile(filepath.Join(entriesDir, "2025-06-08.md"), []byte("- [@09:15] [project-a] Morning standup prep (branch: main)\n- [@14:30] [idea001] Fixed rate limiting bug #api-gateway @pr/142 (branch: main)\n"), 0644)
+	os.WriteFile(filepath.Join(entriesDir, "2025-06-09.md"), []byte("- [@10:00] [project-b] Reviewed PR #42 (branch: dev)\n"), 0644)
+
+	cmd := exec.Command(binary, "search", "standup")
+	cmd.Env = append(os.Environ(), "HOME="+runeDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("search failed: %v\n%s", err, out)
+	}
+
+	output := string(out)
+	if !strings.Contains(output, "2025-06-08 09:15 [project-a] Morning standup prep") {
+		t.Errorf("expected match line, got:\n%s", output)
+	}
+}
+
+func TestCLI_Search_NoMatch(t *testing.T) {
+	binary, runeDir := buildBinaryWithDir(t)
+
+	entriesDir := filepath.Join(runeDir, ".rune", "entries")
+	os.MkdirAll(entriesDir, 0755)
+	os.WriteFile(filepath.Join(entriesDir, "2025-06-08.md"), []byte("- [@09:15] [project-a] Morning standup prep (branch: main)\n"), 0644)
+
+	cmd := exec.Command(binary, "search", "nonexistent")
+	cmd.Env = append(os.Environ(), "HOME="+runeDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("search failed: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("expected empty output, got %q", string(out))
+	}
+}
+
+func TestCLI_Search_ProjectFilter(t *testing.T) {
+	binary, runeDir := buildBinaryWithDir(t)
+
+	entriesDir := filepath.Join(runeDir, ".rune", "entries")
+	os.MkdirAll(entriesDir, 0755)
+	os.WriteFile(filepath.Join(entriesDir, "2025-06-08.md"), []byte("- [@09:15] [project-a] Morning standup prep (branch: main)\n- [@14:30] [idea001] Fixed rate limiting bug (branch: main)\n"), 0644)
+
+	cmd := exec.Command(binary, "search", "-p", "project-a", "bug")
+	cmd.Env = append(os.Environ(), "HOME="+runeDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("search failed: %v\n%s", err, out)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("expected no match for bug in project-a, got:\n%s", string(out))
+	}
+}
+
+func TestCLI_Search_CaseInsensitive(t *testing.T) {
+	binary, runeDir := buildBinaryWithDir(t)
+
+	entriesDir := filepath.Join(runeDir, ".rune", "entries")
+	os.MkdirAll(entriesDir, 0755)
+	os.WriteFile(filepath.Join(entriesDir, "2025-06-08.md"), []byte("- [@09:15] [project-a] Morning Standup Prep (branch: main)\n"), 0644)
+
+	cmd := exec.Command(binary, "search", "standup")
+	cmd.Env = append(os.Environ(), "HOME="+runeDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("search failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "Morning Standup Prep") {
+		t.Errorf("expected case-insensitive match, got:\n%s", string(out))
 	}
 }
 
