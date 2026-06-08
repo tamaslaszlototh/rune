@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"rune/internal/git"
 	"rune/internal/store"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -27,6 +28,10 @@ var (
 			Foreground(lipgloss.Color("#6B7280"))
 	entryProjectStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#10B981"))
+	sectionStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#6B7280")).
+			Padding(0, 1)
 	emptyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#9CA3AF"))
 	helpStyle = lipgloss.NewStyle().
@@ -40,6 +45,8 @@ type model struct {
 	store   *store.Store
 	loaded  bool
 	input   textinput.Model
+	project string
+	branch  string
 }
 
 func Run() error {
@@ -58,10 +65,19 @@ func initialModel(s *store.Store) model {
 	ti.Placeholder = "What did you work on?"
 	ti.Focus()
 
+	project, branch, _ := git.Detect()
+
+	ti.Prompt = "> "
+	if project != "" {
+		ti.Prompt = fmt.Sprintf("> [%s] ", project)
+	}
+
 	m := model{
-		date:  time.Now(),
-		store: s,
-		input: ti,
+		date:    time.Now(),
+		store:   s,
+		input:   ti,
+		project: project,
+		branch:  branch,
 	}
 
 	draft, err := s.ReadDraft(m.date)
@@ -141,6 +157,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	entry := store.Entry{
 		Timestamp: time.Now(),
 		Body:      body,
+		Project:   m.project,
+		Branch:    m.branch,
 	}
 
 	if err := m.store.AppendEntry(m.date, entry); err != nil {
@@ -169,13 +187,26 @@ func (m model) View() string {
 	b.WriteString("\n\n")
 
 	if len(m.entries) == 0 {
-		b.WriteString(emptyStyle.Render("No entries yet. Type below and press Enter to add one."))
+		msg := "No entries yet. Type below and press Enter to add one."
+		b.WriteString(emptyStyle.Render(msg))
 		b.WriteString("\n")
 	} else {
+		var currentProject string
 		for _, e := range m.entries {
+			if e.Project != currentProject {
+				currentProject = e.Project
+				section := currentProject
+				if section == "" {
+					section = "general"
+				}
+				b.WriteString(sectionStyle.Render(section))
+				b.WriteString("\n")
+			}
 			b.WriteString(fmt.Sprintf(" %s ", entryTimeStyle.Render(e.Timestamp.Format("15:04"))))
-			b.WriteString(entryProjectStyle.Render("[" + e.Project + "]"))
-			b.WriteString(" ")
+			if e.Project != "" {
+				b.WriteString(entryProjectStyle.Render("[" + e.Project + "]"))
+				b.WriteString(" ")
+			}
 			b.WriteString(e.Body)
 			if e.Branch != "" {
 				b.WriteString(fmt.Sprintf(" (%s)", helpStyle.Render("branch: "+e.Branch)))
