@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"rune/internal/config"
 	"rune/internal/search"
 	"rune/internal/standup"
 	"rune/internal/store"
@@ -15,8 +16,10 @@ import (
 )
 
 func main() {
+	cfg := loadConfig()
+
 	if len(os.Args) < 2 {
-		if err := tui.Run(); err != nil {
+		if err := tui.Run(cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -24,17 +27,52 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "config":
+		runConfig(cfg)
 	case "standup":
-		runStandup(os.Args[2:])
+		runStandup(os.Args[2:], cfg)
 	case "search":
-		runSearch(os.Args[2:])
+		runSearch(os.Args[2:], cfg)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: rune [standup|search]\n")
+		fmt.Fprintf(os.Stderr, "Usage: rune [config|standup|search]\n")
 		os.Exit(1)
 	}
 }
 
-func runStandup(args []string) {
+func configPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".rune", "config.yml")
+}
+
+func runConfig(cfg *config.Config) {
+	path := configPath()
+	if path == "" {
+		fmt.Fprintln(os.Stderr, "Error: cannot determine home directory")
+		os.Exit(1)
+	}
+	if err := config.Edit(path, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func loadConfig() *config.Config {
+	path := configPath()
+	if path == "" {
+		return &config.Config{Projects: map[string]string{}}
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: invalid config file: %v\n", err)
+		return &config.Config{Projects: map[string]string{}}
+	}
+	return cfg
+}
+
+func runStandup(args []string, cfg *config.Config) {
 	since := time.Now().Add(-24 * time.Hour)
 
 	// Parse --since flag
@@ -75,7 +113,7 @@ func runStandup(args []string) {
 	fmt.Println(out)
 }
 
-func runSearch(args []string) {
+func runSearch(args []string, cfg *config.Config) {
 	project := ""
 
 	// Parse -p flag

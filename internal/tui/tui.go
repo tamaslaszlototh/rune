@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"rune/internal/config"
 	"rune/internal/git"
 	"rune/internal/store"
 
@@ -73,20 +74,21 @@ type model struct {
 	searching       bool
 	savedDraft      string
 	savedFilterIndex int
+	cfg             *config.Config
 }
 
-func Run() error {
+func Run(cfg *config.Config) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
 	s := store.NewStore(filepath.Join(home, ".rune"))
-	p := tea.NewProgram(initialModel(s))
+	p := tea.NewProgram(initialModel(s, cfg))
 	_, err = p.Run()
 	return err
 }
 
-func initialModel(s *store.Store) model {
+func initialModel(s *store.Store, cfg *config.Config) model {
 	ti := textinput.New()
 	ti.Placeholder = "What did you work on?"
 	ti.Focus()
@@ -104,6 +106,7 @@ func initialModel(s *store.Store) model {
 		input:   ti,
 		project: project,
 		branch:  branch,
+		cfg:     cfg,
 	}
 
 	draft, err := s.ReadDraft(m.date)

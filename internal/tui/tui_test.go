@@ -7,12 +7,17 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"rune/internal/config"
 	"rune/internal/store"
 )
 
+func defaultConfig() *config.Config {
+	return &config.Config{Projects: map[string]string{}}
+}
+
 func TestModel_EnterSavesEntry(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	m.input.SetValue("Fixed the login bug")
@@ -50,7 +55,7 @@ func TestModel_EnterSavesEntry(t *testing.T) {
 
 func TestModel_CtrlWDeletesLastWord(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	m.input.SetValue("hello world")
@@ -64,7 +69,7 @@ func TestModel_CtrlWDeletesLastWord(t *testing.T) {
 
 func TestModel_CtrlUClearsLine(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	m.input.SetValue("hello world")
@@ -78,7 +83,7 @@ func TestModel_CtrlUClearsLine(t *testing.T) {
 
 func TestModel_EscClearsInput(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	m.input.SetValue("hello world")
@@ -92,7 +97,7 @@ func TestModel_EscClearsInput(t *testing.T) {
 
 func TestModel_TypeTriggersDraftSave(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	m.input.SetValue("Working on login bug")
@@ -133,7 +138,7 @@ func TestModel_TypeTriggersDraftSave(t *testing.T) {
 
 func TestModel_EnterClearsDraft(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 
 	// Save a draft via auto-save
@@ -171,11 +176,11 @@ func TestModel_EnterClearsDraft(t *testing.T) {
 func TestModel_DraftLoadedOnInit(t *testing.T) {
 	s := store.NewStore(t.TempDir())
 	// Create once to get the date, save a draft
-	m1 := initialModel(s)
+	m1 := initialModel(s, defaultConfig())
 	s.SaveDraft(m1.date, "Draft from previous session")
 
 	// Re-create model — should load draft
-	m2 := initialModel(s)
+	m2 := initialModel(s, defaultConfig())
 	if m2.input.Value() != "Draft from previous session" {
 		t.Errorf("input = %q, want %q", m2.input.Value(), "Draft from previous session")
 	}
@@ -183,7 +188,7 @@ func TestModel_DraftLoadedOnInit(t *testing.T) {
 
 func TestModel_InputAreaRendered(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 
 	m.loaded = true
 
@@ -195,7 +200,7 @@ func TestModel_InputAreaRendered(t *testing.T) {
 
 func TestModel_FilterNarrowsEntries(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "entry from a", Timestamp: time.Now()},
@@ -236,7 +241,7 @@ func TestModel_FilterNarrowsEntries(t *testing.T) {
 
 func TestModel_FilteredEmptyState(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "entry from a", Timestamp: time.Now()},
@@ -252,7 +257,7 @@ func TestModel_FilteredEmptyState(t *testing.T) {
 
 func TestModel_FilterBarShowsProjectPills(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "a", Timestamp: time.Now()},
@@ -275,7 +280,7 @@ func TestModel_FilterBarShowsProjectPills(t *testing.T) {
 
 func TestModel_EmptyState(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 
 	m.loaded = true
 	m.entries = nil
@@ -288,7 +293,7 @@ func TestModel_EmptyState(t *testing.T) {
 
 func TestModel_ShiftTabCyclesBackward(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.projects = []string{"proj-a", "proj-b"}
 	m.filterIndex = -1
@@ -317,7 +322,7 @@ func TestModel_ShiftTabCyclesBackward(t *testing.T) {
 
 func TestModel_TabCyclesFilterForward(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.projects = []string{"proj-a", "proj-b"}
 	m.filterIndex = -1
@@ -346,7 +351,7 @@ func TestModel_TabCyclesFilterForward(t *testing.T) {
 
 func TestModel_SlashKeyEntersSearchMode(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.input.SetValue("some draft text")
 
@@ -369,7 +374,7 @@ func TestModel_SlashKeyEntersSearchMode(t *testing.T) {
 
 func TestModel_SearchFiltersEntries(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
@@ -407,7 +412,7 @@ func TestModel_SearchFiltersEntries(t *testing.T) {
 
 func TestModel_SearchEscExitsSearchMode(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.input.SetValue("my draft")
 	m.projects = []string{"proj-a", "proj-b"}
@@ -441,7 +446,7 @@ func TestModel_SearchEscExitsSearchMode(t *testing.T) {
 
 func TestModel_SearchHighlightMatches(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
@@ -491,7 +496,7 @@ func TestRenderBody(t *testing.T) {
 
 func TestModel_TagsAndLinksRendered(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{
@@ -539,7 +544,7 @@ func TestHighlightMatch(t *testing.T) {
 
 func TestModel_SearchEmptyResults(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.loaded = true
 	m.entries = []store.Entry{
 		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
@@ -570,7 +575,7 @@ func TestModel_SearchEmptyResults(t *testing.T) {
 
 func TestModel_SearchEnterDoesNotSave(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 	m.date = time.Date(2026, 6, 9, 10, 0, 0, 0, time.Local)
 	// Persist an entry to the store first
 	if err := s.AppendEntry(m.date, store.Entry{Body: "Existing entry", Project: "proj-a", Timestamp: m.date}); err != nil {
@@ -617,7 +622,7 @@ func TestModel_SearchEnterDoesNotSave(t *testing.T) {
 
 func TestModel_ShowsEntries(t *testing.T) {
 	s := store.NewStore(t.TempDir())
-	m := initialModel(s)
+	m := initialModel(s, defaultConfig())
 
 	m.loaded = true
 	m.entries = []store.Entry{

@@ -17,8 +17,8 @@ func TestCLI_UnknownFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exit error for unknown flag")
 	}
-	if string(out) != "Usage: rune [standup|search]\n" {
-		t.Errorf("got %q, want %q", string(out), "Usage: rune [standup|search]\n")
+	if string(out) != "Usage: rune [config|standup|search]\n" {
+		t.Errorf("got %q, want %q", string(out), "Usage: rune [config|standup|search]\n")
 	}
 }
 
@@ -155,6 +155,22 @@ func TestCLI_Search_ProjectFilter(t *testing.T) {
 	}
 	if strings.TrimSpace(string(out)) != "" {
 		t.Errorf("expected no match for bug in project-a, got:\n%s", string(out))
+	}
+}
+
+func TestCLI_Config_CreatesFile(t *testing.T) {
+	binary, runeDir := buildBinaryWithDir(t)
+
+	cmd := exec.Command(binary, "config")
+	cmd.Env = append(os.Environ(), "HOME="+runeDir, "EDITOR=true")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("config failed: %v\n%s", err, out)
+	}
+
+	configPath := filepath.Join(runeDir, ".rune", "config.yml")
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Errorf("config file was not created at %s", configPath)
 	}
 }
 
