@@ -19,7 +19,13 @@ func main() {
 	cfg := loadConfig()
 
 	if len(os.Args) < 2 {
-		if err := tui.Run(cfg); err != nil {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		s := store.NewStore(filepath.Join(home, ".rune"))
+		if err := tui.Run(tui.NewStoreAdapter(s), tui.NewGitAdapter(), cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}

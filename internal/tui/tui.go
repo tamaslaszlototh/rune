@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,7 +11,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"rune/internal/config"
-	"rune/internal/git"
 	"rune/internal/store"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -64,7 +61,8 @@ type model struct {
 	entries         []store.Entry
 	date            time.Time
 	err             error
-	store           *store.Store
+	store           EntryStore
+	git             GitDetector
 	loaded          bool
 	input           textinput.Model
 	project         string
@@ -77,23 +75,18 @@ type model struct {
 	cfg             *config.Config
 }
 
-func Run(cfg *config.Config) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	s := store.NewStore(filepath.Join(home, ".rune"))
-	p := tea.NewProgram(initialModel(s, cfg))
-	_, err = p.Run()
+func Run(s EntryStore, g GitDetector, cfg *config.Config) error {
+	p := tea.NewProgram(initialModel(s, g, cfg))
+	_, err := p.Run()
 	return err
 }
 
-func initialModel(s *store.Store, cfg *config.Config) model {
+func initialModel(s EntryStore, g GitDetector, cfg *config.Config) model {
 	ti := textinput.New()
 	ti.Placeholder = "What did you work on?"
 	ti.Focus()
 
-	project, branch, _ := git.Detect()
+	project, branch, _ := g.Detect()
 
 	ti.Prompt = "> "
 	if project != "" {
@@ -103,6 +96,7 @@ func initialModel(s *store.Store, cfg *config.Config) model {
 	m := model{
 		date:    time.Now(),
 		store:   s,
+		git:     g,
 		input:   ti,
 		project: project,
 		branch:  branch,
