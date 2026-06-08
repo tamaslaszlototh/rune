@@ -198,6 +198,60 @@ func TestReadRange(t *testing.T) {
 	}
 }
 
+func TestSaveAndReadDraft(t *testing.T) {
+	dir := t.TempDir()
+	date := time.Date(2025, 6, 8, 0, 0, 0, 0, time.Local)
+	s := NewStore(dir)
+
+	// Save draft
+	err := s.SaveDraft(date, "Working on the login bug")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read draft back
+	draft, err := s.ReadDraft(date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft != "Working on the login bug" {
+		t.Errorf("got %q, want %q", draft, "Working on the login bug")
+	}
+}
+
+func TestClearDraft(t *testing.T) {
+	dir := t.TempDir()
+	date := time.Date(2025, 6, 8, 0, 0, 0, 0, time.Local)
+	s := NewStore(dir)
+
+	s.SaveDraft(date, "draft text")
+	if err := s.ClearDraft(date); err != nil {
+		t.Fatal(err)
+	}
+
+	draft, err := s.ReadDraft(date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft != "" {
+		t.Errorf("draft should be empty after clear, got %q", draft)
+	}
+}
+
+func TestReadDraft_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	date := time.Date(2025, 6, 9, 0, 0, 0, 0, time.Local)
+	s := NewStore(dir)
+
+	draft, err := s.ReadDraft(date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft != "" {
+		t.Errorf("expected empty draft for missing file, got %q", draft)
+	}
+}
+
 func TestReadRange_Partial(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)

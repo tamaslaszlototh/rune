@@ -15,35 +15,55 @@ type Entry struct {
 	Branch    string
 }
 
-var entryRe = regexp.MustCompile(`^\- \[@(\d{2}:\d{2})\] \[([^\]]+)\] (.+) \(branch: ([^)]+)\)$`)
+var fullEntryRe = regexp.MustCompile(`^\- \[@(\d{2}:\d{2})\] \[([^\]]*)\] (.+) \(branch: ([^)]+)\)$`)
+var simpleEntryRe = regexp.MustCompile(`^\- \[@(\d{2}:\d{2})\] (.+)$`)
 var tagRe = regexp.MustCompile(`#([\w][\w-]*)`)
 var linkRe = regexp.MustCompile(`@(\w+/([\w][\w/-]*))`)
 
 func ParseEntryLine(date time.Time, line string) (Entry, error) {
-	m := entryRe.FindStringSubmatch(line)
-	if m == nil {
-		return Entry{}, nil
+	m := fullEntryRe.FindStringSubmatch(line)
+	if m != nil {
+		timeStr := m[1]
+		project := m[2]
+		body := m[3]
+		branch := m[4]
+
+		t, _ := time.Parse("15:04", timeStr)
+		timestamp := time.Date(date.Year(), date.Month(), date.Day(), t.Hour(), t.Minute(), 0, 0, date.Location())
+
+		tags := extractTags(body)
+		links := extractLinks(body)
+
+		return Entry{
+			Timestamp: timestamp,
+			Project:   project,
+			Body:      body,
+			Tags:      tags,
+			Links:     links,
+			Branch:    branch,
+		}, nil
 	}
 
-	timeStr := m[1]
-	project := m[2]
-	body := m[3]
-	branch := m[4]
+	m = simpleEntryRe.FindStringSubmatch(line)
+	if m != nil {
+		timeStr := m[1]
+		body := m[2]
 
-	t, _ := time.Parse("15:04", timeStr)
-	timestamp := time.Date(date.Year(), date.Month(), date.Day(), t.Hour(), t.Minute(), 0, 0, date.Location())
+		t, _ := time.Parse("15:04", timeStr)
+		timestamp := time.Date(date.Year(), date.Month(), date.Day(), t.Hour(), t.Minute(), 0, 0, date.Location())
 
-	tags := extractTags(body)
-	links := extractLinks(body)
+		tags := extractTags(body)
+		links := extractLinks(body)
 
-	return Entry{
-		Timestamp: timestamp,
-		Project:   project,
-		Body:      body,
-		Tags:      tags,
-		Links:     links,
-		Branch:    branch,
-	}, nil
+		return Entry{
+			Timestamp: timestamp,
+			Body:      body,
+			Tags:      tags,
+			Links:     links,
+		}, nil
+	}
+
+	return Entry{}, nil
 }
 
 func extractTags(body string) []string {
@@ -65,10 +85,13 @@ func extractLinks(body string) []string {
 }
 
 func formatEntry(e Entry) string {
-	return fmt.Sprintf("- [@%s] [%s] %s (branch: %s)",
-		e.Timestamp.Format("15:04"),
-		e.Project,
-		e.Body,
-		e.Branch,
-	)
+	if e.Project != "" {
+		return fmt.Sprintf("- [@%s] [%s] %s (branch: %s)",
+			e.Timestamp.Format("15:04"),
+			e.Project,
+			e.Body,
+			e.Branch,
+		)
+	}
+	return fmt.Sprintf("- [@%s] %s", e.Timestamp.Format("15:04"), e.Body)
 }
