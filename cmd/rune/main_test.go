@@ -17,8 +17,8 @@ func TestCLI_UnknownFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exit error for unknown flag")
 	}
-	if string(out) != "Usage: rune [config|standup|search]\n" {
-		t.Errorf("got %q, want %q", string(out), "Usage: rune [config|standup|search]\n")
+	if string(out) != "Error: Usage: rune [config|standup|search]\n" {
+		t.Errorf("got %q, want %q", string(out), "Error: Usage: rune [config|standup|search]\n")
 	}
 }
 
