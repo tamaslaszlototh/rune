@@ -344,6 +344,233 @@ func TestModel_TabCyclesFilterForward(t *testing.T) {
 	check(3, -1, "third Tab wraps to All")
 }
 
+func TestModel_SlashKeyEntersSearchMode(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.input.SetValue("some draft text")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+
+	if !updated.searching {
+		t.Fatal("expected searching to be true after pressing /")
+	}
+	if updated.input.Value() != "" {
+		t.Errorf("search input should be empty, got %q", updated.input.Value())
+	}
+	if updated.savedDraft != "some draft text" {
+		t.Errorf("savedDraft = %q, want %q", updated.savedDraft, "some draft text")
+	}
+	if updated.input.Prompt != "[/] " {
+		t.Errorf("prompt = %q, want %q", updated.input.Prompt, "[/] ")
+	}
+}
+
+func TestModel_SearchFiltersEntries(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.entries = []store.Entry{
+		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
+		{Project: "proj-b", Body: "Added logout feature", Timestamp: time.Now()},
+		{Project: "proj-a", Body: "Updated login page styles", Timestamp: time.Now()},
+	}
+	m.projects = []string{"proj-a", "proj-b"}
+	m.filterIndex = -1
+
+	// Enter search mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+
+	// Type search query
+	for _, ch := range "login" {
+		var cmd tea.Cmd
+		next, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		if cmd != nil {
+			cmd()
+		}
+		updated = next.(model)
+	}
+
+	v := updated.View()
+	if !strings.Contains(v, "Fixed the login bug") {
+		t.Errorf("view should show entry matching 'login', got:\n%s", v)
+	}
+	if !strings.Contains(v, "Updated login page styles") {
+		t.Errorf("view should show entry matching 'login', got:\n%s", v)
+	}
+	if strings.Contains(v, "Added logout feature") {
+		t.Errorf("view should NOT show non-matching entry, got:\n%s", v)
+	}
+}
+
+func TestModel_SearchEscExitsSearchMode(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.input.SetValue("my draft")
+	m.projects = []string{"proj-a", "proj-b"}
+	m.filterIndex = 0
+
+	// Enter search mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+
+	if !updated.searching {
+		t.Fatal("should be in search mode after /")
+	}
+
+	// Exit search mode with Esc
+	next, _ := updated.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	exited := next.(model)
+
+	if exited.searching {
+		t.Fatal("should not be searching after Esc")
+	}
+	if exited.input.Value() != "my draft" {
+		t.Errorf("draft should be restored, got %q", exited.input.Value())
+	}
+	if exited.filterIndex != 0 {
+		t.Errorf("filterIndex should be restored to 0, got %d", exited.filterIndex)
+	}
+	if !strings.HasPrefix(exited.input.Prompt, "> ") {
+		t.Errorf("prompt should be restored to '> ', got %q", exited.input.Prompt)
+	}
+}
+
+func TestModel_SearchHighlightMatches(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.entries = []store.Entry{
+		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
+	}
+	m.projects = []string{"proj-a"}
+	m.filterIndex = -1
+
+	// Enter search mode and type query
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+	for _, ch := range "login" {
+		next, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		if cmd != nil {
+			cmd()
+		}
+		updated = next.(model)
+	}
+
+	v := updated.View()
+	// The entry body should be present
+	if !strings.Contains(v, "Fixed the login bug") {
+		t.Errorf("view should contain the entry body, got:\n%s", v)
+	}
+}
+
+func TestHighlightMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		query    string
+		wantCont string
+		noMatch  string
+	}{
+		{name: "simple match", body: "Fixed the login bug", query: "login", wantCont: "login", noMatch: ""},
+		{name: "no match", body: "Fixed the logout bug", query: "login", wantCont: "Fixed the logout bug", noMatch: ""},
+		{name: "empty query", body: "some text", query: "", wantCont: "some text", noMatch: ""},
+		{name: "case insensitive", body: "Login button", query: "login", wantCont: "Login", noMatch: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := highlightMatch(tt.body, tt.query)
+			if !strings.Contains(got, tt.wantCont) {
+				t.Errorf("highlightMatch(%q, %q) should contain %q, got %q", tt.body, tt.query, tt.wantCont, got)
+			}
+			if tt.noMatch != "" && strings.Contains(got, tt.noMatch) {
+				t.Errorf("highlightMatch(%q, %q) should not contain %q, got %q", tt.body, tt.query, tt.noMatch, got)
+			}
+		})
+	}
+}
+
+func TestModel_SearchEmptyResults(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.entries = []store.Entry{
+		{Project: "proj-a", Body: "Fixed the login bug", Timestamp: time.Now()},
+		{Project: "proj-b", Body: "Added logout feature", Timestamp: time.Now()},
+	}
+	m.projects = []string{"proj-a", "proj-b"}
+	m.filterIndex = -1
+
+	// Enter search mode
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+
+	// Type a query that won't match
+	for _, ch := range "zzzzz" {
+		var cmd tea.Cmd
+		next, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		if cmd != nil {
+			cmd()
+		}
+		updated = next.(model)
+	}
+
+	v := updated.View()
+	if !strings.Contains(v, "No entries matching") {
+		t.Errorf("should show 'No entries matching' for empty search results, got:\n%s", v)
+	}
+}
+
+func TestModel_SearchEnterDoesNotSave(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.date = time.Date(2026, 6, 9, 10, 0, 0, 0, time.Local)
+	// Persist an entry to the store first
+	if err := s.AppendEntry(m.date, store.Entry{Body: "Existing entry", Project: "proj-a", Timestamp: m.date}); err != nil {
+		t.Fatal(err)
+	}
+	m.loaded = true
+	m.entries, _ = s.ReadDay(m.date)
+	m.projects = []string{"proj-a"}
+	m.filterIndex = -1
+
+	// Enter search mode and type something
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+	for _, ch := range "search text" {
+		next, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		if cmd != nil {
+			cmd()
+		}
+		updated = next.(model)
+	}
+
+	// Press Enter — should not save an entry
+	next, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		msg := cmd()
+		next, _ = next.Update(msg)
+	}
+	afterEnter := next.(model)
+
+	// Check no new entry was saved
+	entries, err := s.ReadDay(m.date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("got %d entries, want 1 (Enter should not save during search)", len(entries))
+	}
+
+	// Should still be in search mode
+	if !afterEnter.searching {
+		t.Error("should still be in search mode after Enter")
+	}
+}
+
 func TestModel_ShowsEntries(t *testing.T) {
 	s := store.NewStore(t.TempDir())
 	m := initialModel(s)

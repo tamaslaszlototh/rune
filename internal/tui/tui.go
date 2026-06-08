@@ -43,19 +43,25 @@ var (
 				Foreground(lipgloss.Color("#FFF")).
 				Background(lipgloss.Color("#3B82F6")).
 				Padding(0, 1)
+	matchStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#FDE047")).
+			Foreground(lipgloss.Color("#000"))
 )
 
 type model struct {
-	entries     []store.Entry
-	date        time.Time
-	err         error
-	store       *store.Store
-	loaded      bool
-	input       textinput.Model
-	project     string
-	branch      string
-	projects    []string
-	filterIndex int
+	entries         []store.Entry
+	date            time.Time
+	err             error
+	store           *store.Store
+	loaded          bool
+	input           textinput.Model
+	project         string
+	branch          string
+	projects        []string
+	filterIndex     int
+	searching       bool
+	savedDraft      string
+	savedFilterIndex int
 }
 
 func Run() error {
@@ -125,9 +131,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "/":
+			if !m.searching {
+				return m.enterSearchMode()
+			}
 		case "enter":
+			if m.searching {
+				return m, nil
+			}
 			return m.handleEnter()
 		case "esc":
+			if m.searching {
+				return m.exitSearchMode()
+			}
 			m.input.SetValue("")
 			m.input.SetCursor(0)
 			return m, nil
@@ -138,6 +154,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		if m.searching {
+			return m, cmd
+		}
 		return m, tea.Batch(cmd, m.scheduleAutoSave())
 	case entriesLoaded:
 		m.entries = msg.entries
@@ -194,6 +213,28 @@ func (m model) cycleFilter(direction int) model {
 	return m
 }
 
+func highlightMatch(body, query string) string {
+	if query == "" {
+		return body
+	}
+	lowerBody := strings.ToLower(body)
+	lowerQuery := strings.ToLower(query)
+	var b strings.Builder
+	start := 0
+	for {
+		idx := strings.Index(lowerBody[start:], lowerQuery)
+		if idx == -1 {
+			b.WriteString(body[start:])
+			break
+		}
+		absIdx := start + idx
+		b.WriteString(body[start:absIdx])
+		b.WriteString(matchStyle.Render(body[absIdx : absIdx+len(query)]))
+		start = absIdx + len(query)
+	}
+	return b.String()
+}
+
 func (m model) filterBarView() string {
 	if len(m.projects) == 0 {
 		return ""
@@ -213,6 +254,33 @@ func (m model) filterBarView() string {
 		b.WriteString(style.Render(name))
 	}
 	return b.String()
+}
+
+func (m model) enterSearchMode() (tea.Model, tea.Cmd) {
+	m.savedDraft = m.input.Value()
+	m.savedFilterIndex = m.filterIndex
+	m.filterIndex = -1
+	m.input.SetValue("")
+	m.input.SetCursor(0)
+	m.input.Placeholder = "Search entries..."
+	m.input.Prompt = "[/] "
+	m.searching = true
+	return m, nil
+}
+
+func (m model) exitSearchMode() (tea.Model, tea.Cmd) {
+	m.input.SetValue(m.savedDraft)
+	m.input.SetCursor(len(m.savedDraft))
+	m.savedDraft = ""
+	m.filterIndex = m.savedFilterIndex
+	m.input.Placeholder = "What did you work on?"
+	m.searching = false
+	// Restore project prompt if applicable
+	m.input.Prompt = "> "
+	if m.project != "" {
+		m.input.Prompt = fmt.Sprintf("> [%s] ", m.project)
+	}
+	return m, nil
 }
 
 func (m model) handleEnter() (tea.Model, tea.Cmd) {
@@ -264,9 +332,22 @@ func (m model) View() string {
 		}
 		displayEntries = filtered
 	}
+	if m.searching && m.input.Value() != "" {
+		query := strings.ToLower(m.input.Value())
+		var filtered []store.Entry
+		for _, e := range displayEntries {
+			if strings.Contains(strings.ToLower(e.Body), query) {
+				filtered = append(filtered, e)
+			}
+		}
+		displayEntries = filtered
+	}
 
 	if len(displayEntries) == 0 {
-		if m.filterIndex >= 0 && len(m.projects) > 0 {
+		if m.searching {
+			msg := fmt.Sprintf("No entries matching %q.", m.input.Value())
+			b.WriteString(emptyStyle.Render(msg))
+		} else if m.filterIndex >= 0 && len(m.projects) > 0 {
 			msg := fmt.Sprintf("No entries for %s.", m.projects[m.filterIndex])
 			b.WriteString(emptyStyle.Render(msg))
 		} else {
@@ -291,7 +372,11 @@ func (m model) View() string {
 				b.WriteString(entryProjectStyle.Render("[" + e.Project + "]"))
 				b.WriteString(" ")
 			}
-			b.WriteString(e.Body)
+			if m.searching && m.input.Value() != "" {
+				b.WriteString(highlightMatch(e.Body, m.input.Value()))
+			} else {
+				b.WriteString(e.Body)
+			}
 			if e.Branch != "" {
 				b.WriteString(fmt.Sprintf(" (%s)", helpStyle.Render("branch: "+e.Branch)))
 			}
@@ -304,7 +389,11 @@ func (m model) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(m.filterBarView())
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("ctrl+c: quit | enter: save | esc: clear | ctrl+w: delete word | ctrl+u: clear line"))
+	if m.searching {
+		b.WriteString(helpStyle.Render("esc: exit search | ctrl+w: delete word | ctrl+u: clear line"))
+	} else {
+		b.WriteString(helpStyle.Render("ctrl+c: quit | enter: save | /: search | esc: clear | ctrl+w: delete word | ctrl+u: clear line"))
+	}
 	b.WriteString("\n")
 
 	return b.String()
