@@ -18,13 +18,14 @@ import (
 func main() {
 	cfg := loadConfig()
 
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	s := store.NewStore(filepath.Join(home, ".rune"))
+
 	if len(os.Args) < 2 {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		s := store.NewStore(filepath.Join(home, ".rune"))
 		if err := tui.Run(tui.NewStoreAdapter(s), tui.NewGitAdapter(), cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -32,14 +33,13 @@ func main() {
 		return
 	}
 
-	var err error
 	switch os.Args[1] {
 	case "config":
 		err = runConfig(cfg)
 	case "standup":
-		err = runStandup(os.Args[2:], cfg)
+		err = runStandup(os.Args[2:], cfg, s)
 	case "search":
-		err = runSearch(os.Args[2:], cfg)
+		err = runSearch(os.Args[2:], cfg, s)
 	default:
 		err = fmt.Errorf("Usage: rune [config|standup|search]")
 	}
@@ -78,7 +78,7 @@ func loadConfig() *config.Config {
 	return cfg
 }
 
-func runStandup(args []string, cfg *config.Config) error {
+func runStandup(args []string, cfg *config.Config, s *store.Store) error {
 	since := time.Now().Add(-24 * time.Hour)
 
 	// Parse --since flag
@@ -99,12 +99,6 @@ func runStandup(args []string, cfg *config.Config) error {
 		}
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
-	}
-
-	s := store.NewStore(filepath.Join(home, ".rune"))
 	entries, err := s.ReadRange(since, time.Now())
 	if err != nil {
 		return fmt.Errorf("reading entries: %w", err)
@@ -115,7 +109,7 @@ func runStandup(args []string, cfg *config.Config) error {
 	return nil
 }
 
-func runSearch(args []string, cfg *config.Config) error {
+func runSearch(args []string, cfg *config.Config, s *store.Store) error {
 	project := ""
 
 	// Parse -p flag
@@ -139,12 +133,6 @@ func runSearch(args []string, cfg *config.Config) error {
 	}
 	query := strings.Join(args, " ")
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("getting home directory: %w", err)
-	}
-
-	s := store.NewStore(filepath.Join(home, ".rune"))
 	entries, err := s.ReadRange(time.Date(2000, 1, 1, 0, 0, 0, 0, time.Local), time.Now())
 	if err != nil {
 		return fmt.Errorf("reading entries: %w", err)
