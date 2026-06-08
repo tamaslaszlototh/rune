@@ -467,6 +467,50 @@ func TestModel_SearchHighlightMatches(t *testing.T) {
 	}
 }
 
+func TestRenderBody(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "tag only", body: "Fixed bug #api-gateway"},
+		{name: "link only", body: "Fixed bug @pr/142"},
+		{name: "both", body: "Fixed #bug @pr/142"},
+		{name: "no tags or links", body: "plain text"},
+		{name: "multiple tags", body: "Fixed #bug #api-gateway"},
+		{name: "multiple links", body: "Fixed @pr/142 @issue/42"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := renderBody(tt.body)
+			if !strings.Contains(got, tt.body) {
+				t.Errorf("renderBody(%q) should contain body text %q, got %q", tt.body, tt.body, got)
+			}
+		})
+	}
+}
+
+func TestModel_TagsAndLinksRendered(t *testing.T) {
+	s := store.NewStore(t.TempDir())
+	m := initialModel(s)
+	m.loaded = true
+	m.entries = []store.Entry{
+		{
+			Timestamp: time.Date(2025, 6, 8, 14, 30, 0, 0, time.Local),
+			Project:   "idea001",
+			Body:      "Fixed bug #api-gateway @pr/142",
+			Branch:    "main",
+		},
+	}
+
+	v := m.View()
+	if !strings.Contains(v, "#api-gateway") {
+		t.Errorf("view should contain #api-gateway, got:\n%s", v)
+	}
+	if !strings.Contains(v, "@pr/142") {
+		t.Errorf("view should contain @pr/142, got:\n%s", v)
+	}
+}
+
 func TestHighlightMatch(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -156,6 +156,12 @@ func TestAppendEntry(t *testing.T) {
 	if entries[1].Project != "idea001" || entries[1].Body != "Fixed rate limiting bug #api-gateway @pr/142" {
 		t.Errorf("second entry mismatch: %+v", entries[1])
 	}
+	if len(entries[1].Tags) != 1 || entries[1].Tags[0] != "api-gateway" {
+		t.Errorf("entry[1] Tags = %v, want [api-gateway]", entries[1].Tags)
+	}
+	if len(entries[1].Links) != 1 || entries[1].Links[0] != "pr/142" {
+		t.Errorf("entry[1] Links = %v, want [pr/142]", entries[1].Links)
+	}
 }
 
 func TestReadRange(t *testing.T) {

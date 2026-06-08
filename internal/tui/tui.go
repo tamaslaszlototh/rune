@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,6 +48,15 @@ var (
 	matchStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#FDE047")).
 			Foreground(lipgloss.Color("#000"))
+	tagStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#F59E0B"))
+	linkStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#8B5CF6"))
+)
+
+var (
+	tagRenderRe   = regexp.MustCompile(`#[\w][\w-]*`)
+	linkRenderRe  = regexp.MustCompile(`@\w+/[\w][\w/-]*`)
 )
 
 type model struct {
@@ -235,6 +246,37 @@ func highlightMatch(body, query string) string {
 	return b.String()
 }
 
+func renderBody(body string) string {
+	type match struct {
+		start, end int
+		style      lipgloss.Style
+	}
+
+	var matches []match
+	for _, m := range tagRenderRe.FindAllStringIndex(body, -1) {
+		matches = append(matches, match{m[0], m[1], tagStyle})
+	}
+	for _, m := range linkRenderRe.FindAllStringIndex(body, -1) {
+		matches = append(matches, match{m[0], m[1], linkStyle})
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].start < matches[j].start
+	})
+
+	var b strings.Builder
+	pos := 0
+	for _, m := range matches {
+		if m.start < pos {
+			continue
+		}
+		b.WriteString(body[pos:m.start])
+		b.WriteString(m.style.Render(body[m.start:m.end]))
+		pos = m.end
+	}
+	b.WriteString(body[pos:])
+	return b.String()
+}
+
 func (m model) filterBarView() string {
 	if len(m.projects) == 0 {
 		return ""
@@ -375,7 +417,7 @@ func (m model) View() string {
 			if m.searching && m.input.Value() != "" {
 				b.WriteString(highlightMatch(e.Body, m.input.Value()))
 			} else {
-				b.WriteString(e.Body)
+				b.WriteString(renderBody(e.Body))
 			}
 			if e.Branch != "" {
 				b.WriteString(fmt.Sprintf(" (%s)", helpStyle.Render("branch: "+e.Branch)))
