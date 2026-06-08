@@ -36,17 +36,26 @@ var (
 			Foreground(lipgloss.Color("#9CA3AF"))
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6B7280"))
+	filterPillStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#6B7280")).
+			Padding(0, 1)
+	filterPillActiveStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#FFF")).
+				Background(lipgloss.Color("#3B82F6")).
+				Padding(0, 1)
 )
 
 type model struct {
-	entries []store.Entry
-	date    time.Time
-	err     error
-	store   *store.Store
-	loaded  bool
-	input   textinput.Model
-	project string
-	branch  string
+	entries     []store.Entry
+	date        time.Time
+	err         error
+	store       *store.Store
+	loaded      bool
+	input       textinput.Model
+	project     string
+	branch      string
+	projects    []string
+	filterIndex int
 }
 
 func Run() error {
@@ -122,6 +131,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.SetValue("")
 			m.input.SetCursor(0)
 			return m, nil
+		case "tab":
+			return m.cycleFilter(1), nil
+		case "shift+tab":
+			return m.cycleFilter(-1), nil
 		}
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
@@ -129,6 +142,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entriesLoaded:
 		m.entries = msg.entries
 		m.loaded = true
+		m.projects = extractProjects(m.entries)
+		if m.filterIndex >= len(m.projects) {
+			m.filterIndex = -1
+		}
 	case errMsg:
 		m.err = msg.err
 		m.loaded = true
@@ -146,6 +163,56 @@ func (m model) scheduleAutoSave() tea.Cmd {
 	return tea.Tick(autoSaveDelay, func(t time.Time) tea.Msg {
 		return autoSaveMsg{}
 	})
+}
+
+func extractProjects(entries []store.Entry) []string {
+	seen := make(map[string]bool)
+	var projects []string
+	for _, e := range entries {
+		if e.Project != "" && !seen[e.Project] {
+			seen[e.Project] = true
+			projects = append(projects, e.Project)
+		}
+	}
+	return projects
+}
+
+func (m model) cycleFilter(direction int) model {
+	n := len(m.projects)
+	if n == 0 {
+		return m
+	}
+	m.filterIndex += direction
+	// wrap beyond last project → -1 (All)
+	if m.filterIndex >= n {
+		m.filterIndex = -1
+	}
+	// wrap before -1 → last project
+	if m.filterIndex < -1 {
+		m.filterIndex = n - 1
+	}
+	return m
+}
+
+func (m model) filterBarView() string {
+	if len(m.projects) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	// "All" pill
+	allStyle := filterPillStyle
+	if m.filterIndex == -1 {
+		allStyle = filterPillActiveStyle
+	}
+	b.WriteString(allStyle.Render("All"))
+	for i, name := range m.projects {
+		style := filterPillStyle
+		if i == m.filterIndex {
+			style = filterPillActiveStyle
+		}
+		b.WriteString(style.Render(name))
+	}
+	return b.String()
 }
 
 func (m model) handleEnter() (tea.Model, tea.Cmd) {
@@ -186,13 +253,30 @@ func (m model) View() string {
 	b.WriteString(titleStyle.Render(fmt.Sprintf(" rune — %s ", m.date.Format("Mon Jan 2, 2006"))))
 	b.WriteString("\n\n")
 
-	if len(m.entries) == 0 {
-		msg := "No entries yet. Type below and press Enter to add one."
-		b.WriteString(emptyStyle.Render(msg))
+	displayEntries := m.entries
+	if m.filterIndex >= 0 && m.filterIndex < len(m.projects) {
+		filterProject := m.projects[m.filterIndex]
+		var filtered []store.Entry
+		for _, e := range displayEntries {
+			if e.Project == filterProject {
+				filtered = append(filtered, e)
+			}
+		}
+		displayEntries = filtered
+	}
+
+	if len(displayEntries) == 0 {
+		if m.filterIndex >= 0 && len(m.projects) > 0 {
+			msg := fmt.Sprintf("No entries for %s.", m.projects[m.filterIndex])
+			b.WriteString(emptyStyle.Render(msg))
+		} else {
+			msg := "No entries yet. Type below and press Enter to add one."
+			b.WriteString(emptyStyle.Render(msg))
+		}
 		b.WriteString("\n")
 	} else {
 		var currentProject string
-		for _, e := range m.entries {
+		for _, e := range displayEntries {
 			if e.Project != currentProject {
 				currentProject = e.Project
 				section := currentProject
@@ -218,6 +302,8 @@ func (m model) View() string {
 	b.WriteString("\n")
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
+	b.WriteString(m.filterBarView())
+	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("ctrl+c: quit | enter: save | esc: clear | ctrl+w: delete word | ctrl+u: clear line"))
 	b.WriteString("\n")
 
