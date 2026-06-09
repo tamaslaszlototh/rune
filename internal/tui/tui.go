@@ -16,7 +16,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
-const autoSaveDelay = 2 * time.Second
+const (
+	autoSaveDelay     = 2 * time.Second
+	statusClearDelay  = 1500 * time.Millisecond
+)
 
 var (
 	titleStyle = lipgloss.NewStyle().
@@ -72,6 +75,7 @@ type model struct {
 	searching       bool
 	savedDraft      string
 	savedFilterIndex int
+	statusMsg       string
 	cfg             *config.Config
 	filterProject   string
 }
@@ -135,6 +139,8 @@ type errMsg struct {
 
 type autoSaveMsg struct{}
 
+type clearStatusMsg struct{}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -157,6 +163,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.SetValue("")
 			m.input.SetCursor(0)
 			return m, nil
+		case "ctrl+s":
+			m.statusMsg = ""
+			if m.input.Value() != "" {
+				if err := m.store.SaveDraft(m.date, m.input.Value()); err != nil {
+					m.err = err
+				} else {
+					m.statusMsg = "Draft saved"
+				}
+			}
+			return m, tea.Tick(statusClearDelay, func(t time.Time) tea.Msg {
+				return clearStatusMsg{}
+			})
 		case "tab":
 			return m.cycleFilter(1), nil
 		case "shift+tab":
@@ -193,6 +211,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = err
 			}
 		}
+	case clearStatusMsg:
+		m.statusMsg = ""
 	}
 	return m, nil
 }
@@ -439,10 +459,14 @@ func (m model) View() string {
 	b.WriteString("\n\n")
 	b.WriteString(m.filterBarView())
 	b.WriteString("\n")
+	if m.statusMsg != "" {
+		b.WriteString(helpStyle.Render(m.statusMsg))
+		b.WriteString("\n")
+	}
 	if m.searching {
-		b.WriteString(helpStyle.Render("esc: exit search | ctrl+w: delete word | ctrl+u: clear line"))
+		b.WriteString(helpStyle.Render("ctrl+s: save draft | esc: exit search | ctrl+w: delete word | ctrl+u: clear line"))
 	} else {
-		b.WriteString(helpStyle.Render("ctrl+c: quit | enter: save | /: search | esc: clear | ctrl+w: delete word | ctrl+u: clear line"))
+		b.WriteString(helpStyle.Render("ctrl+c: quit | enter: save | ctrl+s: save draft | /: search | esc: clear | ctrl+w: delete word | ctrl+u: clear line"))
 	}
 	b.WriteString("\n")
 

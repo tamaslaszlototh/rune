@@ -675,6 +675,95 @@ func TestModel_SearchEnterDoesNotSave(t *testing.T) {
 	}
 }
 
+func TestModel_CtrlSSavesDraft(t *testing.T) {
+	s := newMemStore()
+	m := initialModel(s, &fakeGit{}, defaultConfig(), "")
+	m.loaded = true
+
+	m.input.SetValue("Important note")
+
+	// Send Ctrl+S — should save draft immediately, not via auto-save
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+
+	draft, err := s.ReadDraft(m.date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft != "Important note" {
+		t.Errorf("draft = %q, want %q", draft, "Important note")
+	}
+
+	updated := newM.(model)
+	if updated.input.Value() != "Important note" {
+		t.Errorf("input should not be cleared, got %q", updated.input.Value())
+	}
+	if updated.statusMsg != "Draft saved" {
+		t.Errorf("statusMsg = %q, want %q", updated.statusMsg, "Draft saved")
+	}
+}
+
+func TestModel_CtrlSInSearchModeSavesSearchQuery(t *testing.T) {
+	s := newMemStore()
+	m := initialModel(s, &fakeGit{}, defaultConfig(), "")
+	m.loaded = true
+
+	// Enter search mode with some saved draft text
+	m.input.SetValue("original draft")
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := newM.(model)
+
+	// Type a search query
+	for _, ch := range "login bug" {
+		next, _ := updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ch}})
+		updated = next.(model)
+	}
+
+	// Ctrl+S should save the search query as draft
+	next, _ := updated.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	afterSave := next.(model)
+
+	draft, err := s.ReadDraft(m.date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft != "login bug" {
+		t.Errorf("draft = %q, want %q", draft, "login bug")
+	}
+
+	// Should still be in search mode
+	if !afterSave.searching {
+		t.Error("should still be in search mode after Ctrl+S")
+	}
+	if afterSave.statusMsg != "Draft saved" {
+		t.Errorf("statusMsg = %q, want %q", afterSave.statusMsg, "Draft saved")
+	}
+}
+
+func TestModel_CtrlSStatusMsgClearsAfterTick(t *testing.T) {
+	s := newMemStore()
+	m := initialModel(s, &fakeGit{}, defaultConfig(), "")
+	m.loaded = true
+	m.input.SetValue("some text")
+
+	// Ctrl+S returns a Tick cmd; execute it to send clearStatusMsg
+	newM, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd (Tick)")
+	}
+	updated := newM.(model)
+	if updated.statusMsg != "Draft saved" {
+		t.Fatalf("statusMsg = %q, want %q before tick", updated.statusMsg, "Draft saved")
+	}
+
+	// Execute the Tick — it will block ~1.5s, then return clearStatusMsg
+	msg := cmd()
+	nextM, _ := updated.Update(msg)
+	cleared := nextM.(model)
+	if cleared.statusMsg != "" {
+		t.Errorf("statusMsg should be cleared after tick, got %q", cleared.statusMsg)
+	}
+}
+
 func TestModel_ShowsEntries(t *testing.T) {
 	s := newMemStore()
 	m := 	initialModel(s, &fakeGit{}, defaultConfig(), "")
