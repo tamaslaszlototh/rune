@@ -17,8 +17,8 @@ func TestCLI_UnknownFlag(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exit error for unknown flag")
 	}
-	if string(out) != "Error: Usage: rune [config|standup|search]\n" {
-		t.Errorf("got %q, want %q", string(out), "Error: Usage: rune [config|standup|search]\n")
+	if string(out) != "Error: Usage: rune [-p <project>] [config|standup|search]\n" {
+		t.Errorf("got %q, want %q", string(out), "Error: Usage: rune [-p <project>] [config|standup|search]\n")
 	}
 }
 
@@ -155,6 +155,19 @@ func TestCLI_Search_ProjectFilter(t *testing.T) {
 	}
 	if strings.TrimSpace(string(out)) != "" {
 		t.Errorf("expected no match for bug in project-a, got:\n%s", string(out))
+	}
+}
+
+func TestCLI_ProjectFlag_NoValue(t *testing.T) {
+	binary := buildBinary(t)
+
+	cmd := exec.Command(binary, "-p")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected exit error when -p has no value")
+	}
+	if string(out) != "Error: -p requires a project name\n" {
+		t.Errorf("got %q, want %q", string(out), "Error: -p requires a project name\n")
 	}
 }
 

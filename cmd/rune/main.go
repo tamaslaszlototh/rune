@@ -25,23 +25,34 @@ func main() {
 	}
 	s := store.NewStore(filepath.Join(home, ".rune"))
 
-	if len(os.Args) < 2 {
-		if err := tui.Run(tui.NewStoreAdapter(s), tui.NewGitAdapter(), cfg); err != nil {
+	args := os.Args[1:]
+
+	filterProject := ""
+	if len(args) >= 2 && args[0] == "-p" {
+		filterProject = args[1]
+		args = args[2:]
+	} else if len(args) == 1 && args[0] == "-p" {
+		fmt.Fprintf(os.Stderr, "Error: -p requires a project name\n")
+		os.Exit(1)
+	}
+
+	if len(args) == 0 {
+		if err := tui.Run(tui.NewStoreAdapter(s), tui.NewGitAdapter(), cfg, filterProject); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "config":
 		err = runConfig(cfg)
 	case "standup":
-		err = runStandup(os.Args[2:], cfg, s)
+		err = runStandup(args[1:], cfg, s)
 	case "search":
-		err = runSearch(os.Args[2:], cfg, s)
+		err = runSearch(args[1:], cfg, s)
 	default:
-		err = fmt.Errorf("Usage: rune [config|standup|search]")
+		err = fmt.Errorf("Usage: rune [-p <project>] [config|standup|search]")
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

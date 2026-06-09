@@ -73,15 +73,16 @@ type model struct {
 	savedDraft      string
 	savedFilterIndex int
 	cfg             *config.Config
+	filterProject   string
 }
 
-func Run(s EntryStore, g GitDetector, cfg *config.Config) error {
-	p := tea.NewProgram(initialModel(s, g, cfg))
+func Run(s EntryStore, g GitDetector, cfg *config.Config, filterProject string) error {
+	p := tea.NewProgram(initialModel(s, g, cfg, filterProject))
 	_, err := p.Run()
 	return err
 }
 
-func initialModel(s EntryStore, g GitDetector, cfg *config.Config) model {
+func initialModel(s EntryStore, g GitDetector, cfg *config.Config, filterProject string) model {
 	ti := textinput.New()
 	ti.Placeholder = "What did you work on?"
 	ti.Focus()
@@ -94,13 +95,14 @@ func initialModel(s EntryStore, g GitDetector, cfg *config.Config) model {
 	}
 
 	m := model{
-		date:    time.Now(),
-		store:   s,
-		git:     g,
-		input:   ti,
-		project: project,
-		branch:  branch,
-		cfg:     cfg,
+		date:          time.Now(),
+		store:         s,
+		git:           g,
+		input:         ti,
+		project:       project,
+		branch:        branch,
+		cfg:           cfg,
+		filterProject: filterProject,
 	}
 
 	draft, err := s.ReadDraft(m.date)
@@ -170,6 +172,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.entries = msg.entries
 		m.loaded = true
 		m.projects = extractProjects(m.entries)
+		if m.filterProject != "" {
+			m.filterIndex = -1
+			for i, p := range m.projects {
+				if p == m.filterProject {
+					m.filterIndex = i
+					break
+				}
+			}
+		}
 		if m.filterIndex >= len(m.projects) {
 			m.filterIndex = -1
 		}
