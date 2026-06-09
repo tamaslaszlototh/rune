@@ -29,12 +29,13 @@ var (
 			Padding(0, 1)
 	entryTimeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#6B7280"))
-	entryProjectStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#10B981"))
-	sectionStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#6B7280")).
-			Padding(0, 1)
+	statsStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#9CA3AF"))
+	sectionHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#D1D5DB")).
+				Background(lipgloss.Color("#1F2937")).
+				Padding(0, 1)
 	emptyStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#9CA3AF"))
 	helpStyle = lipgloss.NewStyle().
@@ -53,6 +54,8 @@ var (
 			Foreground(lipgloss.Color("#F59E0B"))
 	linkStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#8B5CF6"))
+	branchStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#06B6D4"))
 )
 
 var (
@@ -223,6 +226,18 @@ func (m model) scheduleAutoSave() tea.Cmd {
 	})
 }
 
+func countPerProject(entries []store.Entry) map[string]int {
+	counts := make(map[string]int)
+	for _, e := range entries {
+		p := e.Project
+		if p == "" {
+			p = "general"
+		}
+		counts[p]++
+	}
+	return counts
+}
+
 func extractProjects(entries []store.Entry) []string {
 	seen := make(map[string]bool)
 	var projects []string
@@ -389,6 +404,14 @@ func (m model) View() string {
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(fmt.Sprintf(" rune — %s ", m.date.Format("Mon Jan 2, 2006"))))
+	b.WriteString("\n")
+	if len(m.entries) > 0 {
+		n := len(m.entries)
+		np := len(m.projects)
+		lastTime := m.entries[len(m.entries)-1].Timestamp.Format("15:04")
+		stats := fmt.Sprintf("  %d entries · %d projects · last entry %s ", n, np, lastTime)
+		b.WriteString(statsStyle.Render(stats))
+	}
 	b.WriteString("\n\n")
 
 	displayEntries := m.entries
@@ -426,6 +449,7 @@ func (m model) View() string {
 		}
 		b.WriteString("\n")
 	} else {
+		counts := countPerProject(displayEntries)
 		var currentProject string
 		for _, e := range displayEntries {
 			if e.Project != currentProject {
@@ -434,21 +458,18 @@ func (m model) View() string {
 				if section == "" {
 					section = "general"
 				}
-				b.WriteString(sectionStyle.Render(section))
+				n := counts[currentProject]
+				b.WriteString(sectionHeaderStyle.Render(fmt.Sprintf(" %s (%d) ", section, n)))
 				b.WriteString("\n")
 			}
 			b.WriteString(fmt.Sprintf(" %s ", entryTimeStyle.Render(e.Timestamp.Format("15:04"))))
-			if e.Project != "" {
-				b.WriteString(entryProjectStyle.Render("[" + e.Project + "]"))
-				b.WriteString(" ")
-			}
 			if m.searching && m.input.Value() != "" {
 				b.WriteString(highlightMatch(e.Body, m.input.Value()))
 			} else {
 				b.WriteString(renderBody(e.Body))
 			}
 			if e.Branch != "" {
-				b.WriteString(fmt.Sprintf(" (%s)", helpStyle.Render("branch: "+e.Branch)))
+				b.WriteString(fmt.Sprintf(" %s", branchStyle.Render("["+e.Branch+"]")))
 			}
 			b.WriteString("\n")
 		}
