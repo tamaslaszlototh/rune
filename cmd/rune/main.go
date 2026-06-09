@@ -18,8 +18,15 @@ import (
 func main() {
 	cfg := loadConfig()
 
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	s := store.NewStore(filepath.Join(home, ".rune"))
+
 	if len(os.Args) < 2 {
-		if err := tui.Run(cfg); err != nil {
+		if err := tui.Run(tui.NewStoreAdapter(s), tui.NewGitAdapter(), cfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -28,13 +35,16 @@ func main() {
 
 	switch os.Args[1] {
 	case "config":
-		runConfig(cfg)
+		err = runConfig(cfg)
 	case "standup":
-		runStandup(os.Args[2:], cfg)
+		err = runStandup(os.Args[2:], cfg, s)
 	case "search":
-		runSearch(os.Args[2:], cfg)
+		err = runSearch(os.Args[2:], cfg, s)
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: rune [config|standup|search]\n")
+		err = fmt.Errorf("Usage: rune [config|standup|search]")
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -47,16 +57,12 @@ func configPath() string {
 	return filepath.Join(home, ".rune", "config.yml")
 }
 
-func runConfig(cfg *config.Config) {
+func runConfig(cfg *config.Config) error {
 	path := configPath()
 	if path == "" {
-		fmt.Fprintln(os.Stderr, "Error: cannot determine home directory")
-		os.Exit(1)
+		return fmt.Errorf("cannot determine home directory")
 	}
-	if err := config.Edit(path, cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
+	return config.Edit(path, cfg)
 }
 
 func loadConfig() *config.Config {
@@ -72,7 +78,7 @@ func loadConfig() *config.Config {
 	return cfg
 }
 
-func runStandup(args []string, cfg *config.Config) {
+func runStandup(args []string, cfg *config.Config, s *store.Store) error {
 	since := time.Now().Add(-24 * time.Hour)
 
 	// Parse --since flag
@@ -80,40 +86,30 @@ func runStandup(args []string, cfg *config.Config) {
 		switch args[i] {
 		case "--since":
 			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "Error: --since requires a value")
-				os.Exit(1)
+				return fmt.Errorf("--since requires a value")
 			}
 			i++
-			parsed, err := parseSince(args[i])
+			var err error
+			since, err = parseSince(args[i])
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-				os.Exit(1)
+				return err
 			}
-			since = parsed
 		default:
-			fmt.Fprintf(os.Stderr, "Error: unknown flag %q\n", args[i])
-			os.Exit(1)
+			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	s := store.NewStore(filepath.Join(home, ".rune"))
 	entries, err := s.ReadRange(since, time.Now())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("reading entries: %w", err)
 	}
 
 	out := standup.FormatStandup(entries, since)
 	fmt.Println(out)
+	return nil
 }
 
-func runSearch(args []string, cfg *config.Config) {
+func runSearch(args []string, cfg *config.Config, s *store.Store) error {
 	project := ""
 
 	// Parse -p flag
@@ -122,8 +118,7 @@ func runSearch(args []string, cfg *config.Config) {
 		switch args[i] {
 		case "-p":
 			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "Error: -p requires a project name")
-				os.Exit(1)
+				return fmt.Errorf("-p requires a project name")
 			}
 			i++
 			project = args[i]
@@ -134,22 +129,13 @@ func runSearch(args []string, cfg *config.Config) {
 	args = remaining
 
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: search query is required")
-		os.Exit(1)
+		return fmt.Errorf("search query is required")
 	}
 	query := strings.Join(args, " ")
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	s := store.NewStore(filepath.Join(home, ".rune"))
 	entries, err := s.ReadRange(time.Date(2000, 1, 1, 0, 0, 0, 0, time.Local), time.Now())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("reading entries: %w", err)
 	}
 
 	entries = search.FilterByProject(entries, project)
@@ -168,6 +154,7 @@ func runSearch(args []string, cfg *config.Config) {
 			m.Entry.Body,
 		)
 	}
+	return nil
 }
 
 func parseSince(raw string) (time.Time, error) {
