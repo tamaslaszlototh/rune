@@ -4,11 +4,35 @@ A terminal UI for logging daily engineering notes with zero overhead. Entries ar
 
 ## Installation
 
+### macOS
+
 ```bash
-go install ./cmd/rune
+brew install tamaslaszlototh/tap/rune
 ```
 
-Requires Go 1.26+.
+### Linux
+
+```bash
+brew install tamaslaszlototh/tap/rune
+```
+
+Or download the `.deb` / `.rpm` from the [latest release](https://github.com/tamaslaszlototh/rune/releases/latest).
+
+### Windows
+
+Download the ZIP from the [latest release](https://github.com/tamaslaszlototh/rune/releases/latest) and extract `rune.exe` to a directory on your `PATH`.
+
+> Requires [Git for Windows](https://git-scm.com) for project auto-detection. Works best in Windows Terminal, PowerShell, or any modern terminal with VT support.
+
+### Any platform (requires Go)
+
+```bash
+go install github.com/tamaslaszlototh/rune/cmd/rune@latest
+```
+
+### Direct binary
+
+Download the pre-built binary for your platform from the [latest release](https://github.com/tamaslaszlototh/rune/releases/latest).
 
 ## Usage
 
