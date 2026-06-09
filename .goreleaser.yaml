@@ -1,0 +1,87 @@
+version: 2
+
+project_name: rune
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: rune
+    main: ./cmd/rune
+    binary: rune
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - 6
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: rune
+    builds:
+      - rune
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+brews:
+  - name: rune
+    repository:
+      owner: tamaslaszlototh
+      name: homebrew-tap
+      branch: main
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/tamaslaszlototh/rune"
+    description: "Terminal UI daily engineering journal"
+    license: "MIT"
+    install: |
+      bin.install "rune"
+    test: |
+      system "#{bin}/rune", "standup"
+
+nfpms:
+  - id: rune
+    package_name: rune
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    builds:
+      - rune
+    formats:
+      - deb
+      - rpm
+    homepage: https://github.com/tamaslaszlototh/rune
+    description: "Terminal UI daily engineering journal"
+    maintainer: "Tamas Toth <tamas@example.com>"
+    license: MIT
